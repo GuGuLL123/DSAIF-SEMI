@@ -1,0 +1,42 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        
+
+
+        
+        
+    
+        
+
+
+
+        
+        {
+            "name": "Python Debugger: Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "/home/ylgu/miniconda3/envs/semi-medical/lib/python3.7/site-packages/torch/distributed/launch.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "env": {
+                // "OUTPUT_DIR": "${workspaceFolder}/output/pretrain_mae_base_patch16_224_debug",
+                // "DATA_PATH": "/mnt/hpfs/wuchao_store/data_hub/fetus_us/Volume19",
+                // "OMP_NUM_THREADS": "1",
+                "CUDA_VISIBLE_DEVICES": "0,1",
+                "MASTER_PORT": "19500",
+            },
+            "args": [
+                "--nproc_per_node", "2",
+                "--use_env",
+                "--master_port", "19500",
+                "/home/ylgu/experiments/semi_supervised_segmentation/Medical/DSAIF-SEMI/main3D.py",
+                "--config","/home/ylgu/experiments/semi_supervised_segmentation/Medical/DSAIF-SEMI/configs/LA_DATASET.yaml",
+
+            ]
+        }
+    ]
+}

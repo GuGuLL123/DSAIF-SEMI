@@ -1,0 +1,5 @@
+修改setup.py中的include_dirs 路径
+用python3 -m pybind11 --includes命令
+-I/home/ylgu/miniconda3/envs/dg/include/python3.9 -I/home/ylgu/miniconda3/envs/dg/lib/python3.9/site-packages/pybind11/include
+
+python setup.py build_ext --inplace
