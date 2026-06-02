@@ -4,7 +4,7 @@ import random
 
 from pathlib import Path
 import copy
-# import tree_trans as trtr
+import tree_trans as trtr
 import tree_trans3D as trtr3D
 import matplotlib.pyplot as plt
 import json
@@ -14,6 +14,24 @@ import time
 from scipy.ndimage import rotate
 from PIL import Image
 import higra as hg
+
+
+
+def tree_view(root,tree,h,w,img):
+    nodes = [root]
+    index = 0
+    img_new = np.zeros((h,w))
+    while len(nodes) != 0:
+        cur_node = nodes.pop()
+        parents, next_nodes, members, area = tree[cur_node]
+        nodes.extend(next_nodes)
+        cur_x, cur_y = cur_node % w, cur_node // w
+        for member in members:
+            x = member % w
+            y = member // w
+            img_new[y,x] = img[cur_y,cur_x]
+        index += 1
+    return img_new
 
 
 def tree_view3D(root,tree,h,w,d,img):
@@ -100,6 +118,47 @@ def tree_topopruning_random(root,tree,prob):
     return tree_new
 
 
+def tree_process(img,area_threshold,tree_type,topoprob):
+    h,w = img.shape
+    _, root, tree = trtr.min_max_tree(img,tree_type, 8)
+    new_tree = tree_areapruning(root,tree,area_threshold)
+    new_new_tree = tree_topopruning_random(root, new_tree,topoprob)
+    image = tree_view(root, new_new_tree,h,w,img)
+    return image
+
+
+def tree_process_final(img,tree_type, area_threshold, topoprob, rotate_angle):
+
+    img_max = np.max(img)
+    img_min = np.min(img)
+    img = (img - img_min) / (img_max - img_min + 1e-8) 
+    if random.random() > 0.5:
+        contrast = iaa.GammaContrast((0.5, 1.5))
+        img = contrast.augment_image(img)
+    
+    img = rotate(img, angle=rotate_angle, reshape=False, order=1)
+
+    img = (img * 255).astype(np.uint8)
+    h,w = img.shape
+    _, root, tree = trtr.min_max_tree(img,tree_type, 8)
+    new_tree = tree_areapruning(root,tree,area_threshold)
+    new_new_tree = tree_topopruning_random(root, new_tree,topoprob)
+    img = tree_view(root, new_new_tree,h,w,img)
+    img = img.astype(np.float32)
+    img = img / 255 * (img_max - img_min) + img_min
+
+    return img
+
+
+
+# def tree_process_3D(img,area_threshold,tree_type,topoprob):
+#     h,w,d = img.shape
+#     _, root, tree = trtr3D.min_max_tree3D(img,tree_type, 26)
+#     new_tree = tree_areapruning(root,tree,area_threshold)
+#     new_new_tree = tree_topopruning_random(root,new_tree,topoprob)
+#     image = tree_view3D(root, new_new_tree,h,w,d,img)
+#     return image
+
 
 def tree_process_3D_final(img,tree_type,area_threshold,topoprob,rotate_angle):
 
@@ -130,4 +189,92 @@ def tree_process_3D_final(img,tree_type,area_threshold,topoprob,rotate_angle):
 
     return img
 
+def tree_process_3D_higra_final(img,tree_type, area_threshold,topoprob,rotate_angle):
+    img_h, img_w, img_d = img.shape
+    img_reshape = img.reshape(img_h, img_w * img_d)
+    if random.random() > 0.5:
+        contrast = iaa.GammaContrast((0.5, 1.5))
+        img_reshape = contrast.augment_image(img_reshape)
+    img = img_reshape.reshape(img_h, img_w, img_d)
+    img = rotate(img, axes=(1, 2), angle=rotate_angle, reshape=False, order=1)
+
+    img = img *255
+    img = img.astype(np.uint8)
+    ###6近邻
+    # mask = [[[0, 0, 0], [0, 1, 0], [0, 0, 0]],
+    #         [[0, 1, 0], [1, 0, 1], [0, 1, 0]],
+    #         [[0, 0, 0], [0, 1, 0], [0, 0, 0]]]
+    ###26近邻
+    mask = [[[1, 1, 1],[1, 1, 1],[1, 1, 1]],[[1, 1, 1],[1, 0, 1],[1, 1, 1]],[[1, 1, 1],[1, 1, 1],[1, 1, 1]]]
+
+    neighbours = hg.mask_2_neighbours(mask)
+    graph = hg.get_nd_regular_implicit_graph(img.shape, neighbours)
+    if tree_type == 'maxtree':
+        tree0, altitudes0 = hg.component_tree_max_tree(graph, img)
+        area = hg.attribute_area(tree0)
+        filtered_image_after_area = hg.reconstruct_leaf_data(tree0, altitudes0, area<area_threshold )
+        tree1, altitudes = hg.component_tree_max_tree(graph, filtered_image_after_area)
+        weight = np.ones((tree1.num_vertices(),))
+        weight[:tree1.num_leaves()]=0
+        nbChildren =  hg.accumulate_parallel(tree1,weight,hg.Accumulators.sum)
+        nbSiblings = hg.propagate_parallel(tree1,nbChildren)
+        nbSiblings[tree1.root()] = 0
+        filtered_higra = hg.reconstruct_leaf_data(tree1, altitudes, nbSiblings == 1 )
+    elif tree_type == 'mintree':
+        tree0, altitudes0 = hg.component_tree_min_tree(graph, img)
+        area = hg.attribute_area(tree0)
+        filtered_image_after_area = hg.reconstruct_leaf_data(tree0, altitudes0, area<area_threshold )
+        tree1, altitudes = hg.component_tree_min_tree(graph, filtered_image_after_area)
+        weight = np.ones((tree1.num_vertices(),))
+        weight[:tree1.num_leaves()]=0
+        nbChildren =  hg.accumulate_parallel(tree1,weight,hg.Accumulators.sum)
+        nbSiblings = hg.propagate_parallel(tree1,nbChildren)
+        nbSiblings[tree1.root()] = 0
+        filtered_higra = hg.reconstruct_leaf_data(tree1, altitudes, nbSiblings == 1 )
+    
+    filtered_higra = filtered_higra.astype(np.float32)
+    filtered_higra = filtered_higra / 255
+    return filtered_higra
+
+def tree_process_higra_final(img,tree_type,area_threshold,topoprob, rotate_angle):
+    # size = img.shape
+    img_max = np.max(img)
+    img_min = np.min(img)
+    img = (img - img_min) / (img_max - img_min + 1e-8) 
+    if random.random() > 0.5:
+        contrast = iaa.GammaContrast((0.5, 1.5))
+        img = contrast.augment_image(img)
+    
+    img = rotate(img, angle=rotate_angle, reshape=False, order=1)
+
+    img = (img * 255).astype(np.uint8)
+    neighbour_mask = np.array([[1, 1, 1],[1, 0, 1],[1, 1, 1]])
+    neighbours = hg.mask_2_neighbours(neighbour_mask)
+    graph = hg.get_nd_regular_implicit_graph(img.shape, neighbours)
+    if tree_type == 'maxtree':
+        tree0, altitudes0 = hg.component_tree_max_tree(graph, img)
+        area = hg.attribute_area(tree0)
+        filtered_image_after_area = hg.reconstruct_leaf_data(tree0, altitudes0, area<area_threshold )
+        tree1, altitudes = hg.component_tree_max_tree(graph, filtered_image_after_area)
+        weight = np.ones((tree1.num_vertices(),))
+        weight[:tree1.num_leaves()]=0
+        nbChildren =  hg.accumulate_parallel(tree1,weight,hg.Accumulators.sum)
+        nbSiblings = hg.propagate_parallel(tree1,nbChildren)
+        nbSiblings[tree1.root()] = 0
+        filtered_higra = hg.reconstruct_leaf_data(tree1, altitudes, nbSiblings == 1 )
+    elif tree_type == 'mintree':
+        tree0, altitudes0 = hg.component_tree_min_tree(graph, img)
+        area = hg.attribute_area(tree0)
+        filtered_image_after_area = hg.reconstruct_leaf_data(tree0, altitudes0, area<area_threshold )
+        tree1, altitudes = hg.component_tree_min_tree(graph, filtered_image_after_area)
+        weight = np.ones((tree1.num_vertices(),))
+        weight[:tree1.num_leaves()]=0
+        nbChildren =  hg.accumulate_parallel(tree1,weight,hg.Accumulators.sum)
+        nbSiblings = hg.propagate_parallel(tree1,nbChildren)
+        nbSiblings[tree1.root()] = 0
+        filtered_higra = hg.reconstruct_leaf_data(tree1, altitudes, nbSiblings == 1 )
+
+    filtered_higra = filtered_higra.astype(np.float32)
+    filtered_higra = filtered_higra / 255 * (img_max - img_min) + img_min
+    return filtered_higra
 
