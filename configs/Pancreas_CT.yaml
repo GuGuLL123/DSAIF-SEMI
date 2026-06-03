@@ -1,0 +1,41 @@
+# arguments for dataset
+dataset: Pancreas_CT
+nclass: 2
+image_channel: 1
+crop_size: [96, 96, 96]
+data_root: /data/ylgu/Medical/Semi_medical_data/Pancreas_CT
+
+# arguments for training
+max_iterations: 15000
+batch_size: 1
+lr: 0.01  # 2GPUs
+lr_multi: 1.0
+
+model: VNet
+n_filters1: 16
+n_filters2: 16
+
+labeled_rate: 5
+
+
+#two network different training type
+
+#color space
+
+bezier_type: [3,3]
+gammacontrast_type: [0,0]
+
+
+#loss related
+rampup_weight: 1
+rampup_length: 40
+
+
+
+
+#tree   0 means no tree, 1000 means random choice
+tree_mode: 2
+tree_areathrehold : 50
+tree_topoprob: 0
+
+
